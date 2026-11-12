@@ -72,6 +72,26 @@ Lote 2
   carrier_events           20          0          0     3,568
 ```
 
+## Transformación en Silver
+
+```bash
+python -m lakehouse silver
+```
+
+Convierte Bronze en tablas tipadas con un registro por clave de negocio, horas en UTC y los registros inválidos en cuarentena con su motivo. Procesa solo los lotes de Bronze nuevos. Detalle en [docs/architecture.md](docs/architecture.md#silver).
+
+```
+Lotes de Bronze procesados: 2
+  Tabla                 Leídas Cuarentena Descartadas Insertadas Actualizadas
+  products                   0          0           0          0            0
+  lots                     181          0          57         95           29
+  shipments                 44          0           0         44            0
+  cold_room_readings    56,448         65           0     56,383            0
+  carrier_events         3,568          0          53      3,513            0
+```
+
+`Descartadas` son copias repetidas o versiones anteriores de un mismo registro.
+
 ## Pruebas
 
 ```bash

@@ -91,6 +91,45 @@ Todas las tablas de datos agregan las columnas de linaje `_source_file`, `_file_
 | `SKIPPED_DUPLICATE` | Contenido idéntico a un archivo ya ingerido |
 | `REJECTED_SCHEMA` | Encabezado distinto al contrato |
 
+## Silver
+
+Implementado en [`lakehouse/silver.py`](../lakehouse/silver.py). `python -m lakehouse silver` procesa los lotes de Bronze confirmados en `ingestion_log` que cada tabla todavía no ha procesado.
+
+| Tabla | Clave de negocio | Estrategia | Partición |
+|---|---|---|---|
+| `products` | `product_code` | Se conserva la versión del lote más reciente | — |
+| `lots` | `lot_code` | Se conserva la versión con mayor `updated_at` | — |
+| `shipments` | `shipment_number` | Se conserva la versión con mayor `updated_at` | — |
+| `cold_room_readings` | `room_code`, `sensor_id`, `reading_ts_utc` | Inmutable: solo se insertan claves nuevas | `reading_date` |
+| `carrier_events` | `event_id` | Inmutable: solo se insertan claves nuevas | — |
+| `quarantine` | — | Registros que no cumplen una regla | — |
+| `_processing_state` | `table_name` | Último lote de Bronze procesado por tabla | — |
+
+Cada fila conserva su linaje: `_source_file`, `_bronze_batch_id` y `_silver_processed_at`.
+
+**Pasos por tabla:**
+
+1. **Tipado.** El texto de Bronze se convierte a fechas, enteros, decimales e instantes. Las marcas de tiempo se interpretan con su desfase explícito (`Z` o `-06:00`) y se guardan en UTC.
+2. **Validación.** Cada regla tiene un motivo legible. El registro se evalúa en orden y la primera regla incumplida lo envía a `quarantine`, junto con el registro original tal como estaba en Bronze.
+3. **Deduplicación** por clave de negocio dentro de los lotes procesados.
+4. **MERGE** en la tabla Silver.
+
+| Tabla | Reglas de cuarentena |
+|---|---|
+| `products` | Clave vacía, clase de temperatura desconocida, rango no numérico o invertido |
+| `lots` | Sociedad desconocida, producto inexistente en el maestro, fecha inválida, peso no numérico o no positivo |
+| `shipments` | Contenedor inválido según ISO 6346, clase desconocida, fechas inválidas, ETA anterior al zarpe |
+| `cold_room_readings` | Instante inválido, temperatura vacía o no numérica, código de error `-99.9`, fuera del rango del sensor (−40 a 50 °C), humedad fuera de 0 a 100 % |
+| `carrier_events` | JSON inválido o sin `event_id`, tipo de evento desconocido, instante inválido, sin contenedor |
+
+**Decisiones:**
+
+- **Inmutables contra versionados.** Una lectura de sensor o un evento de la naviera describen un hecho que no cambia: si llega repetido, se conserva el primero. Un lote o un embarque cambian durante su vida: se conserva la versión más reciente según `updated_at`, aunque llegue fuera de orden.
+- **Esquema unificado para la naviera.** Silver interpreta el JSON con un esquema que es superconjunto de las versiones 1 y 2. En la versión 1, `reefer_humidity_pct` queda vacío y `schema_version` vale 1.
+- **Avance por tabla.** Cada tabla guarda su propio último lote procesado, de modo que una falla en una tabla no obliga a reprocesar las demás.
+- **Repetible.** Si el avance se pierde o una ejecución se interrumpe, volver a procesar los mismos lotes no cambia los datos: los MERGE no insertan claves existentes ni reemplazan versiones más nuevas, y la cuarentena de ese rango de lotes se reemplaza en lugar de agregarse.
+- **Solo lotes confirmados.** Silver nunca lee filas de un lote de Bronze que no esté en `ingestion_log`.
+
 ## Garantías de diseño
 
 | Situación | Comportamiento |
@@ -128,7 +167,7 @@ La lógica de transformación vive en el paquete `lakehouse` y no depende del en
 | 0 | Diseño, entorno local y verificación de Delta Lake | ✅ |
 | 1 | Generadores de las tres fuentes con defectos controlados | ✅ |
 | 2 | Bronze: ingesta idempotente con metadatos | ✅ |
-| 3 | Silver: tipado, deduplicación, cuarentena y `MERGE` incremental | ⏳ |
+| 3 | Silver: tipado, deduplicación, cuarentena y `MERGE` incremental | ✅ |
 | 4 | Gold: modelo dimensional, indicadores y publicación por lote | ⏳ |
 | 5 | Datos tardíos, reproceso, pruebas de calidad y medición de rendimiento | ⏳ |
 | 6 | Despliegue en Microsoft Fabric: Lakehouse, notebooks, pipeline y Power BI | ⏳ |

@@ -13,6 +13,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 
+from ..iso6346 import check_digit as iso6346_check_digit
 from .catalog import (
     CARRIERS, COLD_ROOMS, COMPANIES, COMPANY_PRODUCTS, CONTAINER_CAPACITY_KG, PERIOD_END,
     PERIOD_START, PRODUCTS, ROUTES, TEMP_CLASSES,
@@ -35,19 +36,6 @@ def days(start: date, end: date):
     while current <= end:
         yield current
         current += timedelta(days=1)
-
-
-def iso6346_check_digit(owner_and_serial: str) -> int:
-    """Dígito de control ISO 6346 para los 10 primeros caracteres de un contenedor."""
-    letter_values, value = {}, 10
-    for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-        if value % 11 == 0:
-            value += 1
-        letter_values[letter] = value
-        value += 1
-    total = sum((letter_values[c] if c.isalpha() else int(c)) * 2 ** i
-                for i, c in enumerate(owner_and_serial))
-    return total % 11 % 10
 
 
 @dataclass

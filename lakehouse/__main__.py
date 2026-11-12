@@ -3,6 +3,7 @@
   check                  verifica el entorno: escribe, actualiza y lee una tabla Delta con time travel
   generate [--until F]   genera los archivos de origen con fecha de llegada hasta F (AAAA-MM-DD)
   ingest                 ingiere en Bronze los archivos nuevos de la zona de aterrizaje
+  silver                 procesa en Silver los lotes de Bronze pendientes
 """
 from __future__ import annotations
 
@@ -92,6 +93,27 @@ def ingest(simulate_failure: bool) -> int:
     return 0
 
 
+def silver() -> int:
+    from .config import paths
+    from .silver import build
+    from .spark import get_spark
+
+    spark = get_spark("silver")
+    result = build(spark, paths())
+    if result.bronze_batches is None:
+        print("Sin lotes nuevos de Bronze.")
+        spark.stop()
+        return 0
+    first, last = result.bronze_batches
+    print(f"Lotes de Bronze procesados: {first}" + (f" a {last}" if last != first else ""))
+    print(f"  {'Tabla':<19} {'Leídas':>8} {'Cuarentena':>10} {'Descartadas':>11} {'Insertadas':>10} {'Actualizadas':>12}")
+    for name, r in result.tables.items():
+        print(f"  {name:<19} {r.bronze_rows:>8,} {r.quarantined:>10,} {r.duplicates:>11,} "
+              f"{r.inserted:>10,} {r.updated:>12,}")
+    spark.stop()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m lakehouse", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -104,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
     ing = sub.add_parser("ingest")
     ing.add_argument("--simulate-failure", action="store_true",
                      help="interrumpe el lote después de escribir los datos y antes de registrarlo")
+    sub.add_parser("silver")
     args = parser.parse_args(argv)
     if args.command == "check":
         return check()
@@ -111,6 +134,8 @@ def main(argv: list[str] | None = None) -> int:
         return generate(args.until, args.sensors_per_room)
     if args.command == "ingest":
         return ingest(args.simulate_failure)
+    if args.command == "silver":
+        return silver()
     return 1
 
 
