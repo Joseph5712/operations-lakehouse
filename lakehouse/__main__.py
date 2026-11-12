@@ -1,18 +1,20 @@
 """Línea de comandos: python -m lakehouse <comando>
 
-  check    verifica el entorno: escribe, actualiza y lee una tabla Delta con time travel
+  check                  verifica el entorno: escribe, actualiza y lee una tabla Delta con time travel
+  generate [--until F]   genera los archivos de origen con fecha de llegada hasta F (AAAA-MM-DD)
 """
 from __future__ import annotations
 
 import argparse
 import shutil
 import sys
-
-from .config import paths
-from .spark import get_spark
+from datetime import date
 
 
 def check() -> int:
+    from .config import paths
+    from .spark import get_spark
+
     spark = get_spark("environment-check")
     target = paths().table("bronze", "_environment_check")
     shutil.rmtree(target, ignore_errors=True)
@@ -43,14 +45,37 @@ def check() -> int:
     return 0 if ok else 1
 
 
+def generate(until: date, sensors_per_room: int) -> int:
+    from pathlib import Path
+
+    from .config import paths
+    from .generator import write_landing
+    from .generator.catalog import LAST_ARRIVAL
+
+    landing = Path(paths().files) / "landing"
+    summary = write_landing(landing, until=min(until, LAST_ARRIVAL), sensors_per_room=sensors_per_room)
+    print(f"Zona de aterrizaje: {landing}  (llegadas hasta {min(until, LAST_ARRIVAL)})")
+    print(f"  {'Fuente':<10} {'Nuevos':>7} {'Existentes':>11} {'Filas nuevas':>13}")
+    for source in ("erp", "sensors", "carrier"):
+        print(f"  {source:<10} {summary.written[source]:>7} {summary.existing[source]:>11} "
+              f"{summary.rows[source]:>13,}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m lakehouse", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("check")
+    gen = sub.add_parser("generate")
+    gen.add_argument("--until", type=date.fromisoformat, default=date(2026, 11, 3),
+                     help="última fecha de llegada a generar (por defecto, todo el periodo)")
+    gen.add_argument("--sensors-per-room", type=int, default=2)
     args = parser.parse_args(argv)
     if args.command == "check":
         return check()
+    if args.command == "generate":
+        return generate(args.until, args.sensors_per_room)
     return 1
 
 

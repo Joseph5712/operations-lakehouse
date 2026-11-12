@@ -45,6 +45,15 @@ Tabla Delta: /workspace/data/Tables/bronze/_environment_check
 Entorno correcto.
 ```
 
+## Datos de origen
+
+```bash
+python -m lakehouse generate                      # todo el periodo
+python -m lakehouse generate --until 2026-10-13   # solo lo que había llegado hasta esa fecha
+```
+
+Genera los archivos del ERP, los sensores de cuartos fríos y la naviera en `data/Files/landing`, con comportamientos de entrega reales: duplicados, datos tardíos, zonas horarias mixtas y evolución de esquema. Detalle en [docs/sources.md](docs/sources.md).
+
 ## Pruebas
 
 ```bash
@@ -55,10 +64,11 @@ docker compose run --rm lakehouse python -m pytest    # Docker Compose
 ## Estructura
 
 ```
-lakehouse/      Paquete Python: configuración, sesión Spark y procesos por capa
-tests/          Pruebas con Spark local
-docs/           Arquitectura y decisiones de diseño
-data/           Lakehouse local (ignorado por Git)
+lakehouse/             Paquete Python: configuración, sesión Spark y procesos por capa
+lakehouse/generator/   Simulación de las fuentes de origen
+tests/                 Pruebas
+docs/                  Arquitectura, contratos de las fuentes y decisiones de diseño
+data/                  Lakehouse local (ignorado por Git)
 ```
 
 ## Stack

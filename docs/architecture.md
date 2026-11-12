@@ -18,6 +18,9 @@ La operación incorporó fuentes que un almacén relacional maneja mal: lecturas
 
 ## Fuentes
 
+Contratos y comportamientos detallados en [sources.md](sources.md).
+
+
 | Fuente | Formato | Frecuencia | Contenido | Comportamientos a manejar |
 |---|---|---|---|---|
 | ERP | CSV | Diaria | Lotes, productos con su rango de temperatura, embarques y contenedores | Correcciones de registros ya enviados |
@@ -93,7 +96,7 @@ La lógica de transformación vive en el paquete `lakehouse` y no depende del en
 | Fase | Alcance | Estado |
 |---|---|---|
 | 0 | Diseño, entorno local y verificación de Delta Lake | ✅ |
-| 1 | Generadores de las tres fuentes con defectos controlados | ⏳ |
+| 1 | Generadores de las tres fuentes con defectos controlados | ✅ |
 | 2 | Bronze: ingesta idempotente con metadatos | ⏳ |
 | 3 | Silver: tipado, deduplicación, cuarentena y `MERGE` incremental | ⏳ |
 | 4 | Gold: modelo dimensional, indicadores y publicación por lote | ⏳ |
