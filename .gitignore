@@ -1,0 +1,14 @@
+# Datos locales del lakehouse (se regeneran)
+data/
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Entorno local
+.env

@@ -1,0 +1,25 @@
+{
+  "name": "Operations Lakehouse",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+  "containerEnv": {
+    "LAKEHOUSE_ROOT": "${containerWorkspaceFolder}/data",
+    "PYTHONPATH": "${containerWorkspaceFolder}",
+    "SPARK_DRIVER_MEMORY": "2g"
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb"
+  },
+  "forwardPorts": [4040],
+  "portsAttributes": {
+    "4040": { "label": "Spark UI", "onAutoForward": "silent" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python"]
+    }
+  }
+}

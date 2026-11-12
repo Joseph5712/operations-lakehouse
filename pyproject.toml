@@ -1,0 +1,9 @@
+[project]
+name = "operations-lakehouse"
+version = "0.1.0"
+description = "Plataforma lakehouse de operaciones con arquitectura medallion sobre Delta Lake"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

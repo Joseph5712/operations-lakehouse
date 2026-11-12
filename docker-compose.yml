@@ -1,0 +1,15 @@
+services:
+  lakehouse:
+    build: .
+    image: operations-lakehouse:local
+    container_name: operations-lakehouse
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      LAKEHOUSE_ROOT: /workspace/data
+      SPARK_DRIVER_MEMORY: 2g
+    ports:
+      - "4040:4040"   # Spark UI mientras una sesión está activa
+    stdin_open: true
+    tty: true
