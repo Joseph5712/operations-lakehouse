@@ -61,6 +61,36 @@ flowchart LR
 | **Silver** | Tipos correctos, claves de negocio, un registro por clave y registros inválidos separados en cuarentena | Carga incremental con `MERGE` sobre la clave de negocio |
 | **Gold** | Dimensiones, hechos e indicadores de cadena de frío y tránsito | Se publica por lote; el consumo lee solo lotes completos |
 
+## Bronze
+
+Implementado en [`lakehouse/bronze.py`](../lakehouse/bronze.py). Cada ejecución de `python -m lakehouse ingest` es un lote con `batch_id` correlativo.
+
+| Tabla | Origen | Contenido | Partición |
+|---|---|---|---|
+| `erp_products` | `erp/products.csv` | Columnas del contrato como texto | — |
+| `erp_lots` | `erp/lots_*.csv` | Columnas del contrato como texto | — |
+| `erp_shipments` | `erp/shipments_*.csv` | Columnas del contrato como texto | — |
+| `sensor_readings` | `sensors/*.csv` | Columnas del contrato como texto | `_arrival_date` |
+| `carrier_events` | `carrier/*.jsonl` | Línea JSON completa en `payload` | `_arrival_date` |
+| `ingestion_log` | — | Una fila por archivo procesado | — |
+
+Todas las tablas de datos agregan las columnas de linaje `_source_file`, `_file_sha256`, `_arrival_date`, `_batch_id` e `_ingested_at`.
+
+**Decisiones:**
+
+- **Todo como texto.** Bronze no interpreta tipos. Un valor inválido (`-99.9`, una fecha mal formada) se conserva tal cual y se evalúa en Silver, de modo que siempre es posible reprocesar desde el original.
+- **JSON sin desarmar.** Los eventos de la naviera se guardan como la línea completa. Cuando la versión 2 del esquema agrega campos, la ingesta no cambia; Silver decide qué campos incorpora.
+- **Idempotencia por huella.** Un archivo se identifica por su SHA-256, no por su nombre. Un reenvío idéntico con otro nombre se registra como `SKIPPED_DUPLICATE` con la ruta del original en `duplicate_of`.
+- **Validación de encabezado.** Un CSV cuyas columnas no coinciden con el [contrato](../lakehouse/contracts.py) se registra como `REJECTED_SCHEMA` y no se cargan sus filas. Para reprocesarlo, la fuente debe enviar el archivo corregido con otro nombre.
+- **Registro al final del lote.** Delta Lake confirma cada tabla por separado. El lote se considera completo solo cuando sus archivos están en `ingestion_log`, que se escribe al final. Si una ejecución se interrumpe antes, la siguiente elimina las filas cuyo `_batch_id` no está registrado y vuelve a procesar esos archivos.
+- **Partición por fecha de llegada** en las tablas de alto volumen, para que Silver procese solo lo nuevo.
+
+| Estado en `ingestion_log` | Significado |
+|---|---|
+| `INGESTED` | Filas agregadas; `rows` indica cuántas |
+| `SKIPPED_DUPLICATE` | Contenido idéntico a un archivo ya ingerido |
+| `REJECTED_SCHEMA` | Encabezado distinto al contrato |
+
 ## Garantías de diseño
 
 | Situación | Comportamiento |
@@ -97,7 +127,7 @@ La lógica de transformación vive en el paquete `lakehouse` y no depende del en
 |---|---|---|
 | 0 | Diseño, entorno local y verificación de Delta Lake | ✅ |
 | 1 | Generadores de las tres fuentes con defectos controlados | ✅ |
-| 2 | Bronze: ingesta idempotente con metadatos | ⏳ |
+| 2 | Bronze: ingesta idempotente con metadatos | ✅ |
 | 3 | Silver: tipado, deduplicación, cuarentena y `MERGE` incremental | ⏳ |
 | 4 | Gold: modelo dimensional, indicadores y publicación por lote | ⏳ |
 | 5 | Datos tardíos, reproceso, pruebas de calidad y medición de rendimiento | ⏳ |

@@ -2,6 +2,7 @@
 
   check                  verifica el entorno: escribe, actualiza y lee una tabla Delta con time travel
   generate [--until F]   genera los archivos de origen con fecha de llegada hasta F (AAAA-MM-DD)
+  ingest                 ingiere en Bronze los archivos nuevos de la zona de aterrizaje
 """
 from __future__ import annotations
 
@@ -62,6 +63,35 @@ def generate(until: date, sensors_per_room: int) -> int:
     return 0
 
 
+def ingest(simulate_failure: bool) -> int:
+    from .bronze import INGESTED, REJECTED_SCHEMA, SKIPPED_DUPLICATE, TABLES, SimulatedFailure
+    from .bronze import ingest as run_ingest
+    from .config import paths
+    from .spark import get_spark
+
+    spark = get_spark("bronze-ingest")
+    try:
+        result = run_ingest(spark, paths(), fail_before_commit=simulate_failure)
+    except SimulatedFailure as error:
+        print(error)
+        spark.stop()
+        return 1
+    if result.recovered_rows:
+        print(f"Recuperación: {result.recovered_rows:,} filas de un lote sin registrar eliminadas")
+    if result.batch_id is None:
+        print("Sin archivos nuevos.")
+        spark.stop()
+        return 0
+    print(f"Lote {result.batch_id}")
+    print(f"  {'Tabla':<17} {'Ingeridos':>9} {'Duplicados':>10} {'Rechazados':>10} {'Filas':>9}")
+    for table in TABLES:
+        print(f"  {table.name:<17} {result.files[(table.name, INGESTED)]:>9} "
+              f"{result.files[(table.name, SKIPPED_DUPLICATE)]:>10} "
+              f"{result.files[(table.name, REJECTED_SCHEMA)]:>10} {result.rows[table.name]:>9,}")
+    spark.stop()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m lakehouse", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -71,11 +101,16 @@ def main(argv: list[str] | None = None) -> int:
     gen.add_argument("--until", type=date.fromisoformat, default=date(2026, 11, 3),
                      help="última fecha de llegada a generar (por defecto, todo el periodo)")
     gen.add_argument("--sensors-per-room", type=int, default=2)
+    ing = sub.add_parser("ingest")
+    ing.add_argument("--simulate-failure", action="store_true",
+                     help="interrumpe el lote después de escribir los datos y antes de registrarlo")
     args = parser.parse_args(argv)
     if args.command == "check":
         return check()
     if args.command == "generate":
         return generate(args.until, args.sensors_per_room)
+    if args.command == "ingest":
+        return ingest(args.simulate_failure)
     return 1
 
 

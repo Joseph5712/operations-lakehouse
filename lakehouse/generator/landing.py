@@ -27,6 +27,7 @@ from .catalog import (
     CARRIERS, COLD_ROOMS, GATEWAY_UTC_OFFSET_HOURS, LAST_ARRIVAL, LOCATIONS, PERIOD_END, PERIOD_START,
     PRODUCTS, TEMP_CLASSES,
 )
+from ..contracts import ERP_LOT_COLUMNS, ERP_PRODUCT_COLUMNS, ERP_SHIPMENT_COLUMNS, SENSOR_COLUMNS
 from .world import World, days
 
 SCHEMA_V2_FROM = date(2026, 10, 15)
@@ -35,14 +36,6 @@ GATEWAY_OUTAGE = {"room": "GT01-ESC-01", "dates": (date(2026, 10, 10), date(2026
 RETRY_UPLOAD = {"room": "CR01-LIM-01", "reading_date": date(2026, 10, 19), "arrival": date(2026, 10, 21)}
 REPEATED_TAIL = {"room": "CR01-ALA-01", "reading_date": date(2026, 9, 15), "hours": 2}
 
-ERP_LOT_COLUMNS = ["lot_code", "company_code", "product_code", "production_date", "qty_kg",
-                   "cold_room_code", "shipment_number", "updated_at"]
-ERP_SHIPMENT_COLUMNS = ["shipment_number", "company_code", "container_number", "carrier_code",
-                        "port_of_loading", "port_of_discharge", "temp_class", "planned_departure",
-                        "planned_arrival", "updated_at"]
-ERP_PRODUCT_COLUMNS = ["product_code", "product_name", "temp_class", "min_temp_c", "max_temp_c",
-                       "shelf_life_days"]
-SENSOR_COLUMNS = ["room_code", "sensor_id", "reading_ts", "temperature_c", "humidity_pct"]
 
 
 @dataclass(frozen=True)

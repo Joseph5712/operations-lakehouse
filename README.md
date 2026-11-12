@@ -54,6 +54,24 @@ python -m lakehouse generate --until 2026-10-13   # solo lo que había llegado h
 
 Genera los archivos del ERP, los sensores de cuartos fríos y la naviera en `data/Files/landing`, con comportamientos de entrega reales: duplicados, datos tardíos, zonas horarias mixtas y evolución de esquema. Detalle en [docs/sources.md](docs/sources.md).
 
+## Ingesta en Bronze
+
+```bash
+python -m lakehouse ingest
+```
+
+Carga en tablas Delta los archivos nuevos de la zona de aterrizaje, con linaje por fila y un registro por archivo. Es idempotente: un archivo ya ingerido, o uno idéntico con otro nombre, no se vuelve a cargar. Detalle en [docs/architecture.md](docs/architecture.md#bronze).
+
+```
+Lote 2
+  Tabla             Ingeridos Duplicados Rechazados     Filas
+  erp_products              0          0          0         0
+  erp_lots                 19          0          0       181
+  erp_shipments            16          0          0        44
+  sensor_readings          98          1          0    56,448
+  carrier_events           20          0          0     3,568
+```
+
 ## Pruebas
 
 ```bash
