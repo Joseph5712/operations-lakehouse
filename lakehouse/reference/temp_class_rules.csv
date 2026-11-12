@@ -1,0 +1,4 @@
+temp_class,alarm_tolerance_c,description
+FRESH,0.5,Precisión del sensor
+BANANA,0.5,Precisión del sensor
+FROZEN,3.0,Aire del cuarto; el producto congelado tolera alzas breves hasta -15 °C

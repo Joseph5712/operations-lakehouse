@@ -4,6 +4,8 @@
   generate [--until F]   genera los archivos de origen con fecha de llegada hasta F (AAAA-MM-DD)
   ingest                 ingiere en Bronze los archivos nuevos de la zona de aterrizaje
   silver                 procesa en Silver los lotes de Bronze pendientes
+  gold                   publica las tablas Gold y muestra los hallazgos principales
+  pipeline               ejecuta ingest, silver y gold en orden
 """
 from __future__ import annotations
 
@@ -114,6 +116,60 @@ def silver() -> int:
     return 0
 
 
+def gold(simulate_failure: bool = False) -> int:
+    from .config import paths
+    from .gold import SimulatedFailure, publish, register_views
+    from .spark import get_spark
+
+    spark = get_spark("gold")
+    try:
+        result = publish(spark, paths(), fail_before_register=simulate_failure)
+    except SimulatedFailure as error:
+        print(error)
+        spark.stop()
+        return 1
+    if result.removed_orphan_rows:
+        print(f"Recuperación: {result.removed_orphan_rows:,} filas de una publicación sin registrar eliminadas")
+    if result.skipped:
+        print(f"Gold al día: la publicación {result.publication_id} ya incluye todos los datos de Silver.")
+    else:
+        print(f"Publicación {result.publication_id}")
+        for table, rows in result.rows.items():
+            print(f"  {table:<26} {rows:>6,} filas")
+    _findings(spark)
+    spark.stop()
+    return 0
+
+
+def _findings(spark) -> None:
+    from .config import paths
+    from .gold import register_views
+
+    register_views(spark, paths())
+    print("\nExcursiones críticas en cuartos fríos")
+    spark.sql("""
+        SELECT room_code, start_utc, duration_min, peak_temp_c, max_temp_c
+        FROM gold_fact_cold_room_excursion WHERE severity = 'CRITICA'
+        ORDER BY duration_min DESC LIMIT 5""").show(truncate=False)
+    print("Estado de cadena de frío por lote")
+    spark.sql("""
+        SELECT cold_chain_status, COUNT(*) AS lots, SUM(qty_kg) AS qty_kg
+        FROM gold_fact_lot_cold_chain GROUP BY cold_chain_status ORDER BY cold_chain_status""").show()
+    print("Contenedores con temperatura fuera de rango en tránsito")
+    spark.sql("""
+        SELECT shipment_number, container_number, port_of_discharge, status,
+               transit_out_of_range_h, max_supply_air_c, arrival_delay_h
+        FROM gold_fact_container_transit WHERE transit_out_of_range_h > 0""").show(truncate=False)
+
+
+def pipeline() -> int:
+    for step in (lambda: ingest(False), silver, gold):
+        code = step()
+        if code:
+            return code
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m lakehouse", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -127,6 +183,10 @@ def main(argv: list[str] | None = None) -> int:
     ing.add_argument("--simulate-failure", action="store_true",
                      help="interrumpe el lote después de escribir los datos y antes de registrarlo")
     sub.add_parser("silver")
+    gld = sub.add_parser("gold")
+    gld.add_argument("--simulate-failure", action="store_true",
+                     help="interrumpe la publicación después de escribir las tablas y antes de registrarla")
+    sub.add_parser("pipeline")
     args = parser.parse_args(argv)
     if args.command == "check":
         return check()
@@ -136,6 +196,10 @@ def main(argv: list[str] | None = None) -> int:
         return ingest(args.simulate_failure)
     if args.command == "silver":
         return silver()
+    if args.command == "gold":
+        return gold(args.simulate_failure)
+    if args.command == "pipeline":
+        return pipeline()
     return 1
 
 

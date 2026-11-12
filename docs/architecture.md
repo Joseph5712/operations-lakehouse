@@ -130,6 +130,47 @@ Cada fila conserva su linaje: `_source_file`, `_bronze_batch_id` y `_silver_proc
 - **Repetible.** Si el avance se pierde o una ejecución se interrumpe, volver a procesar los mismos lotes no cambia los datos: los MERGE no insertan claves existentes ni reemplazan versiones más nuevas, y la cuarentena de ese rango de lotes se reemplaza en lugar de agregarse.
 - **Solo lotes confirmados.** Silver nunca lee filas de un lote de Bronze que no esté en `ingestion_log`.
 
+## Gold
+
+Implementado en [`lakehouse/gold.py`](../lakehouse/gold.py). `python -m lakehouse gold` publica las tablas y muestra los hallazgos principales.
+
+| Tabla | Una fila es | Uso |
+|---|---|---|
+| `dim_cold_room` | Un cuarto frío, con su rango de conservación y umbrales de alarma | Filtros y umbrales |
+| `dim_product` | Un producto | Filtros |
+| `fact_cold_room_daily` | Un cuarto en un día: cobertura de lecturas, temperaturas y minutos fuera de rango | Tendencias y salud de los sensores |
+| `fact_cold_room_excursion` | Un episodio continuo fuera de rango de al menos 30 minutos | Alertas de planta |
+| `fact_lot_cold_chain` | Un lote: exposición en su cuarto y en tránsito, y su estado | Decisión de calidad sobre cada lote |
+| `fact_container_transit` | Un embarque: zarpe, arribo, retraso y temperatura del contenedor | Logística |
+| `_publications` | Una publicación registrada | Control de consumo |
+
+### Reglas de negocio
+
+| Regla | Valor | Motivo |
+|---|---|---|
+| Umbral de alarma | Rango del producto ± tolerancia por clase | Fresco y banano: 0.5 °C (precisión del sensor). Congelado: 3 °C, porque el aire sube en cada apertura y el producto tolera alzas breves hasta −15 °C. Configurable en [`temp_class_rules.csv`](../lakehouse/reference/temp_class_rules.csv) |
+| Temperatura del cuarto | Promedio de sus sensores en cada intervalo de 5 minutos | Un sensor descalibrado no genera una excursión por sí solo |
+| Excursión | Lecturas consecutivas fuera del umbral durante 30 minutos o más | Descongelamientos y aperturas breves son transitorios. Un hueco sin lecturas cierra el episodio |
+| Excursión crítica | 120 minutos o más | Exposición sostenida |
+| Lote en su cuarto | Desde el inicio del día de producción hasta el evento `LOADED` (o 4 horas antes del zarpe planificado) | Ventana de exposición del lote |
+| Tránsito fuera de rango | Lecturas del contenedor fuera del umbral × 6 horas | Intervalo de la telemetría |
+| `COMPROMETIDO` | Estuvo en una excursión crítica o pasó 24 horas o más fuera de rango en tránsito | Requiere inspección antes de vender |
+| `EN_RIESGO` | 60 minutos o más de excursiones moderadas, o alguna lectura fuera de rango en tránsito | Revisión de calidad |
+| Retraso | Arribo real (o última ETA informada) menos la ETA planificada | Cumplimiento de la naviera |
+
+### Publicación
+
+Delta Lake confirma cada tabla por separado. Si Gold reemplazara sus tablas una por una, un reporte que consulte durante la escritura podría combinar datos de dos ejecuciones.
+
+1. Cada ejecución agrega sus filas con un `_publication_id` nuevo.
+2. Al terminar todas las tablas, registra la publicación en `_publications`.
+3. El consumo lee solo la última publicación registrada (`gold.current`, `gold.register_views`).
+4. Se conservan la publicación vigente y la anterior. Las más antiguas, y las filas de una publicación que no llegó a registrarse, se eliminan.
+
+Si Silver no procesó lotes nuevos de Bronze desde la última publicación, Gold no vuelve a publicar.
+
+Gold se recalcula completo en cada publicación: con dos meses de datos la ejecución toma alrededor de un minuto. El recálculo limitado a las fechas afectadas por datos tardíos se evalúa en la fase 5 con mayor volumen.
+
 ## Garantías de diseño
 
 | Situación | Comportamiento |
@@ -168,7 +209,7 @@ La lógica de transformación vive en el paquete `lakehouse` y no depende del en
 | 1 | Generadores de las tres fuentes con defectos controlados | ✅ |
 | 2 | Bronze: ingesta idempotente con metadatos | ✅ |
 | 3 | Silver: tipado, deduplicación, cuarentena y `MERGE` incremental | ✅ |
-| 4 | Gold: modelo dimensional, indicadores y publicación por lote | ⏳ |
+| 4 | Gold: modelo dimensional, indicadores y publicación por lote | ✅ |
 | 5 | Datos tardíos, reproceso, pruebas de calidad y medición de rendimiento | ⏳ |
 | 6 | Despliegue en Microsoft Fabric: Lakehouse, notebooks, pipeline y Power BI | ⏳ |
 | 7 | Documentación final y demostración | ⏳ |

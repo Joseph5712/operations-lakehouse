@@ -92,6 +92,33 @@ Lotes de Bronze procesados: 2
 
 `Descartadas` son copias repetidas o versiones anteriores de un mismo registro.
 
+## Publicación en Gold
+
+```bash
+python -m lakehouse gold        # solo Gold
+python -m lakehouse pipeline    # Bronze, Silver y Gold en orden
+```
+
+Calcula las excursiones de temperatura de cada cuarto frío, la exposición de cada lote y el desempeño de cada contenedor, y publica las tablas de forma que un reporte nunca vea una publicación a medias. Detalle en [docs/architecture.md](docs/architecture.md#gold).
+
+```
+Excursiones críticas en cuartos fríos
++-----------+-------------------+------------+-----------+----------+
+|room_code  |start_utc          |duration_min|peak_temp_c|max_temp_c|
++-----------+-------------------+------------+-----------+----------+
+|CR01-LIM-02|2026-10-07 14:40:00|295         |18.7       |13.0      |
++-----------+-------------------+------------+-----------+----------+
+
+Estado de cadena de frío por lote
++-----------------+----+-------+
+|cold_chain_status|lots| qty_kg|
++-----------------+----+-------+
+|     COMPROMETIDO|   6|  58850|
+|        EN_RIESGO|  11|  62750|
+|               OK| 288|2694400|
++-----------------+----+-------+
+```
+
 ## Pruebas
 
 ```bash
@@ -104,6 +131,7 @@ docker compose run --rm lakehouse python -m pytest    # Docker Compose
 ```
 lakehouse/             Paquete Python: configuración, sesión Spark y procesos por capa
 lakehouse/generator/   Simulación de las fuentes de origen
+lakehouse/reference/   Datos de referencia: cuartos fríos y tolerancias de alarma
 tests/                 Pruebas
 docs/                  Arquitectura, contratos de las fuentes y decisiones de diseño
 data/                  Lakehouse local (ignorado por Git)
