@@ -23,7 +23,7 @@ def lakehouse_root(tmp_path, monkeypatch):
 @pytest.fixture(scope="session")
 def lake(spark, tmp_path_factory):
     """Pipeline completo con dos llegadas de archivos y una publicación Gold interrumpida."""
-    from lakehouse import gold, silver
+    from lakehouse import gold, quality, silver
     from lakehouse.bronze import ingest
     from lakehouse.config import Paths
     from lakehouse.generator import write_landing
@@ -36,6 +36,7 @@ def lake(spark, tmp_path_factory):
     ingest(spark, paths)
     silver_1 = silver.build(spark, paths)
     gold_1 = gold.publish(spark, paths)
+    quality_1 = quality.run(spark, paths)
 
     write_landing(landing, until=LAST_ARRIVAL)
     ingest(spark, paths)
@@ -44,8 +45,9 @@ def lake(spark, tmp_path_factory):
         gold.publish(spark, paths, fail_before_register=True)
     visible_after_failure = gold.current_publication(spark, paths)
     gold_2 = gold.publish(spark, paths)
+    quality_2 = quality.run(spark, paths)
 
     silver_3 = silver.build(spark, paths)
     gold_3 = gold.publish(spark, paths)
     return SimpleNamespace(paths=paths, silver=(silver_1, silver_2, silver_3), gold=(gold_1, gold_2, gold_3),
-                           visible_after_failure=visible_after_failure)
+                           quality=(quality_1, quality_2), visible_after_failure=visible_after_failure)

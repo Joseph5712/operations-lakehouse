@@ -169,7 +169,35 @@ Delta Lake confirma cada tabla por separado. Si Gold reemplazara sus tablas una 
 
 Si Silver no procesó lotes nuevos de Bronze desde la última publicación, Gold no vuelve a publicar.
 
-Gold se recalcula completo en cada publicación: con dos meses de datos la ejecución toma alrededor de un minuto. El recálculo limitado a las fechas afectadas por datos tardíos se evalúa en la fase 5 con mayor volumen.
+Gold se recalcula completo en cada publicación. Con 1.76 millones de lecturas la publicación tarda lo mismo que con 176 mil (~22 s), por lo que el recálculo limitado a las fechas afectadas por datos tardíos no se justifica a este volumen ([performance.md](performance.md)).
+
+## Calidad, reproceso y mantenimiento
+
+### Controles de calidad
+
+Implementados en [`lakehouse/quality.py`](../lakehouse/quality.py). `python -m lakehouse quality` los ejecuta y guarda el resultado en `gold._quality_checks`. El comando `pipeline` los ejecuta al final y termina con error si alguno falla, de modo que un orquestador detiene la cadena.
+
+| Control | Objeto | FAIL / WARN cuando |
+|---|---|---|
+| `conciliacion_bronze` | Cada tabla Bronze | FAIL: las filas de la tabla no coinciden con las registradas en `ingestion_log` |
+| `clave_unica` | Tablas Silver y hechos Gold | FAIL: una clave de negocio aparece más de una vez |
+| `gold_al_dia` | `gold._publications` | FAIL: la publicación vigente no incluye el último lote procesado en Silver |
+| `integridad_referencial` | `gold.fact_lot_cold_chain` | FAIL: un lote apunta a un cuarto frío desconocido |
+| `tasa_cuarentena` | Cada tabla Silver | WARN: más del 1 % de los registros de origen fue a cuarentena |
+| `frescura_fuente` | ERP, sensores y naviera | WARN: una fuente lleva más de 2 días sin enviar archivos mientras las demás siguen llegando |
+| `cobertura_sensores` | `gold.fact_cold_room_daily` | WARN: un cuarto frío no tiene lecturas en algún día del periodo |
+
+Con la llegada hasta el 2026-10-13, `cobertura_sensores` advierte los tres días que la pasarela `GT01-ESC-01` no ha enviado. Cuando esos archivos llegan, el control vuelve a PASS.
+
+### Reproceso desde Bronze
+
+`python -m lakehouse silver --full-refresh` vacía Silver y lo reconstruye con todos los lotes de Bronze. Se usa cuando cambia una regla de validación o de transformación. Las tablas se vacían con `DELETE` y no se borran, de modo que la versión anterior sigue disponible en el historial de Delta para compararla. El reproceso produce exactamente el mismo contenido que el procesamiento incremental, lo que verifica una prueba automática.
+
+### Mantenimiento de tablas
+
+`python -m lakehouse maintain` ejecuta `OPTIMIZE` en todas las tablas Delta. Compacta los archivos pequeños que dejan las cargas incrementales y ordena `silver.cold_room_readings` por `room_code` (Z-ORDER) dentro de cada partición diaria. Con `--vacuum` también elimina los archivos sin referencia de más de 7 días; las versiones recientes siguen disponibles para *time travel*.
+
+Medición y decisiones de rendimiento en [performance.md](performance.md).
 
 ## Garantías de diseño
 
@@ -210,6 +238,6 @@ La lógica de transformación vive en el paquete `lakehouse` y no depende del en
 | 2 | Bronze: ingesta idempotente con metadatos | ✅ |
 | 3 | Silver: tipado, deduplicación, cuarentena y `MERGE` incremental | ✅ |
 | 4 | Gold: modelo dimensional, indicadores y publicación por lote | ✅ |
-| 5 | Datos tardíos, reproceso, pruebas de calidad y medición de rendimiento | ⏳ |
+| 5 | Datos tardíos, reproceso, pruebas de calidad y medición de rendimiento | ✅ |
 | 6 | Despliegue en Microsoft Fabric: Lakehouse, notebooks, pipeline y Power BI | ⏳ |
 | 7 | Documentación final y demostración | ⏳ |

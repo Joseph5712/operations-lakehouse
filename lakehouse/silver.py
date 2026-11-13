@@ -296,7 +296,21 @@ def _merge(spark: SparkSession, path: str, table: SilverTable, df: DataFrame) ->
     return int(metrics.get("numTargetRowsInserted", 0)), int(metrics.get("numTargetRowsUpdated", 0))
 
 
-def build(spark: SparkSession, paths: Paths) -> SilverResult:
+def reset(spark: SparkSession, paths: Paths) -> None:
+    """Vacía Silver para reconstruirlo desde Bronze (por ejemplo, después de cambiar una regla).
+
+    Se usa DELETE en lugar de borrar las carpetas: la versión anterior queda en el
+    historial de Delta y se puede comparar con la reconstruida.
+    """
+    for name in [t.name for t in TABLES] + [QUARANTINE_TABLE, STATE_TABLE]:
+        path = paths.table("silver", name)
+        if _exists(path):
+            DeltaTable.forPath(spark, path).delete()
+
+
+def build(spark: SparkSession, paths: Paths, full_refresh: bool = False) -> SilverResult:
+    if full_refresh:
+        reset(spark, paths)
     state = _state(spark, paths)
     last = _committed_bronze_batch(spark, paths)
     result = SilverResult()

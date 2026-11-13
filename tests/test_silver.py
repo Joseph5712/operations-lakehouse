@@ -100,3 +100,22 @@ def test_reprocessing_the_same_batches_changes_nothing(spark, lake):
     assert replay.bronze_batches == (1, 2)
     assert table_counts(spark, paths) == before
     assert sum(t.inserted for t in replay.tables.values()) == 0
+
+
+def test_full_refresh_rebuilds_the_same_silver(spark, lake):
+    paths = lake.paths
+    exclude = {"_silver_processed_at", "quarantined_at"}
+
+    def snapshot(table):
+        df = silver(spark, paths, table)
+        return df.select(*[c for c in df.columns if c not in exclude])
+
+    tables = ("products", "lots", "shipments", "cold_room_readings", "carrier_events", "quarantine")
+    before = {t: snapshot(t).cache() for t in tables}
+    for df in before.values():
+        df.count()
+    build(spark, paths, full_refresh=True)
+    for table in tables:
+        after = snapshot(table)
+        assert after.count() == before[table].count(), table
+        assert after.exceptAll(before[table]).count() == 0, table

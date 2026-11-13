@@ -96,7 +96,7 @@ Lotes de Bronze procesados: 2
 
 ```bash
 python -m lakehouse gold        # solo Gold
-python -m lakehouse pipeline    # Bronze, Silver y Gold en orden
+python -m lakehouse pipeline    # Bronze, Silver, Gold y controles de calidad en orden
 ```
 
 Calcula las excursiones de temperatura de cada cuarto frío, la exposición de cada lote y el desempeño de cada contenedor, y publica las tablas de forma que un reporte nunca vea una publicación a medias. Detalle en [docs/architecture.md](docs/architecture.md#gold).
@@ -118,6 +118,23 @@ Estado de cadena de frío por lote
 |               OK| 288|2694400|
 +-----------------+----+-------+
 ```
+
+## Operación
+
+```bash
+python -m lakehouse quality                 # controles de calidad; termina con error si alguno falla
+python -m lakehouse silver --full-refresh   # reconstruye Silver desde Bronze tras cambiar una regla
+python -m lakehouse maintain                # OPTIMIZE de todas las tablas Delta
+python -m lakehouse benchmark               # mide el pipeline con 176 mil y 1.76 millones de lecturas
+```
+
+```
+  WARN   cobertura_sensores      gold.fact_cold_room_daily     3 días sin lecturas: GT01-ESC-01 2026-10-10, ...
+
+24 controles: 23 PASS, 1 WARN, 0 FAIL
+```
+
+Detalle en [docs/architecture.md](docs/architecture.md#calidad-reproceso-y-mantenimiento) y mediciones en [docs/performance.md](docs/performance.md).
 
 ## Pruebas
 

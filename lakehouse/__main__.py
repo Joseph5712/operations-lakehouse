@@ -4,8 +4,12 @@
   generate [--until F]   genera los archivos de origen con fecha de llegada hasta F (AAAA-MM-DD)
   ingest                 ingiere en Bronze los archivos nuevos de la zona de aterrizaje
   silver                 procesa en Silver los lotes de Bronze pendientes
+  silver --full-refresh  reconstruye Silver completo desde Bronze
   gold                   publica las tablas Gold y muestra los hallazgos principales
-  pipeline               ejecuta ingest, silver y gold en orden
+  quality                ejecuta los controles de calidad; termina con error si alguno falla
+  pipeline               ejecuta ingest, silver, gold y quality en orden
+  maintain [--vacuum]    compacta los archivos de todas las tablas Delta (OPTIMIZE)
+  benchmark              mide el pipeline completo con distintos volúmenes
 """
 from __future__ import annotations
 
@@ -95,13 +99,15 @@ def ingest(simulate_failure: bool) -> int:
     return 0
 
 
-def silver() -> int:
+def silver(full_refresh: bool = False) -> int:
     from .config import paths
     from .silver import build
     from .spark import get_spark
 
     spark = get_spark("silver")
-    result = build(spark, paths())
+    if full_refresh:
+        print("Reproceso completo: Silver se reconstruye desde todos los lotes de Bronze.")
+    result = build(spark, paths(), full_refresh=full_refresh)
     if result.bronze_batches is None:
         print("Sin lotes nuevos de Bronze.")
         spark.stop()
@@ -162,11 +168,59 @@ def _findings(spark) -> None:
         FROM gold_fact_container_transit WHERE transit_out_of_range_h > 0""").show(truncate=False)
 
 
+def quality() -> int:
+    from .config import paths
+    from .quality import run
+    from .spark import get_spark
+
+    spark = get_spark("quality")
+    checks = run(spark, paths())
+    print(f"  {'Estado':<6} {'Control':<23} {'Objeto':<29} Observado")
+    for c in checks:
+        print(f"  {c.status:<6} {c.name:<23} {c.target:<29} {c.observed}")
+    failed = [c for c in checks if c.status == "FAIL"]
+    warned = [c for c in checks if c.status == "WARN"]
+    print(f"\n{len(checks)} controles: {len(checks) - len(failed) - len(warned)} PASS, "
+          f"{len(warned)} WARN, {len(failed)} FAIL")
+    spark.stop()
+    return 1 if failed else 0
+
+
 def pipeline() -> int:
-    for step in (lambda: ingest(False), silver, gold):
+    for step in (lambda: ingest(False), silver, gold, quality):
         code = step()
         if code:
             return code
+    return 0
+
+
+def maintain(vacuum: bool) -> int:
+    from .config import paths
+    from .maintenance import optimize
+    from .spark import get_spark
+
+    spark = get_spark("maintenance")
+    print(f"  {'Tabla':<34} {'Archivos antes':>14} {'Después':>8} {'Segundos':>9}")
+    for r in optimize(spark, paths(), vacuum=vacuum):
+        print(f"  {r.table:<34} {r.files_before:>14,} {r.files_after:>8,} {r.seconds:>9.1f}")
+    spark.stop()
+    return 0
+
+
+def benchmark(sensors: list[int], root: str) -> int:
+    from pathlib import Path
+
+    from .benchmark import run, to_markdown
+    from .spark import get_spark
+
+    spark = get_spark("benchmark")
+    results = []
+    for count in sensors:
+        print(f"Midiendo con {count} sensores por cuarto…", flush=True)
+        results.append(run(spark, Path(root) / f"sensors_{count}", count))
+    print()
+    print(to_markdown(results))
+    spark.stop()
     return 0
 
 
@@ -182,11 +236,18 @@ def main(argv: list[str] | None = None) -> int:
     ing = sub.add_parser("ingest")
     ing.add_argument("--simulate-failure", action="store_true",
                      help="interrumpe el lote después de escribir los datos y antes de registrarlo")
-    sub.add_parser("silver")
+    slv = sub.add_parser("silver")
+    slv.add_argument("--full-refresh", action="store_true", help="reconstruye Silver desde todos los lotes de Bronze")
     gld = sub.add_parser("gold")
     gld.add_argument("--simulate-failure", action="store_true",
                      help="interrumpe la publicación después de escribir las tablas y antes de registrarla")
+    sub.add_parser("quality")
     sub.add_parser("pipeline")
+    mnt = sub.add_parser("maintain")
+    mnt.add_argument("--vacuum", action="store_true", help="borra archivos sin referencia de más de 7 días")
+    bench = sub.add_parser("benchmark")
+    bench.add_argument("--sensors-per-room", type=int, nargs="+", default=[2, 20])
+    bench.add_argument("--root", default="/tmp/lakehouse-benchmark")
     args = parser.parse_args(argv)
     if args.command == "check":
         return check()
@@ -195,11 +256,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "ingest":
         return ingest(args.simulate_failure)
     if args.command == "silver":
-        return silver()
+        return silver(args.full_refresh)
     if args.command == "gold":
         return gold(args.simulate_failure)
+    if args.command == "quality":
+        return quality()
     if args.command == "pipeline":
         return pipeline()
+    if args.command == "maintain":
+        return maintain(args.vacuum)
+    if args.command == "benchmark":
+        return benchmark(args.sensors_per_room, args.root)
     return 1
 
 
