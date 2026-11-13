@@ -11,7 +11,7 @@ Tablas:
 Publicación: Delta Lake confirma cada tabla por separado, así que una lectura
 podría ver tablas de dos ejecuciones distintas. Para evitarlo, cada ejecución
 agrega sus filas con un `_publication_id` nuevo y, al final, registra la
-publicación en `_publications`. El consumo lee solo la última publicación
+publicación en `publications`. El consumo lee solo la última publicación
 registrada (`current`). Se conserva la publicación anterior para poder volver
 a ella; las más antiguas se eliminan.
 """
@@ -27,9 +27,9 @@ from delta.tables import DeltaTable
 from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
 
-from .config import Paths
+from .config import Paths, table_exists
 
-PUBLICATIONS = "_publications"
+PUBLICATIONS = "publications"
 REFERENCE_ROOMS = Path(__file__).parent / "reference" / "cold_rooms.csv"
 REFERENCE_RULES = Path(__file__).parent / "reference" / "temp_class_rules.csv"
 
@@ -57,7 +57,7 @@ class GoldResult:
 
 
 def _exists(path: str) -> bool:
-    return (Path(path) / "_delta_log").exists()
+    return table_exists(path)
 
 
 def _silver(spark: SparkSession, paths: Paths, table: str) -> DataFrame:
@@ -269,7 +269,7 @@ def current(spark: SparkSession, paths: Paths, table: str) -> DataFrame:
 
 
 def _silver_signature(spark: SparkSession, paths: Paths) -> int:
-    state = spark.read.format("delta").load(paths.table("silver", "_processing_state"))
+    state = spark.read.format("delta").load(paths.table("silver", "processing_state"))
     return state.agg(F.min("last_bronze_batch")).first()[0] or 0
 
 

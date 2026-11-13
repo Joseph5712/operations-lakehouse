@@ -60,7 +60,7 @@ def generate(until: date, sensors_per_room: int) -> int:
     from .generator import write_landing
     from .generator.catalog import LAST_ARRIVAL
 
-    landing = Path(paths().files) / "landing"
+    landing = paths().landing_dir
     summary = write_landing(landing, until=min(until, LAST_ARRIVAL), sensors_per_room=sensors_per_room)
     print(f"Zona de aterrizaje: {landing}  (llegadas hasta {min(until, LAST_ARRIVAL)})")
     print(f"  {'Fuente':<10} {'Nuevos':>7} {'Existentes':>11} {'Filas nuevas':>13}")

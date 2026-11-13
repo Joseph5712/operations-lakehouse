@@ -31,7 +31,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import (DateType, LongType, StringType, StructField, StructType,
                                TimestampType)
 
-from .config import Paths
+from .config import Paths, table_exists
 from .contracts import ERP_LOT_COLUMNS, ERP_PRODUCT_COLUMNS, ERP_SHIPMENT_COLUMNS, SENSOR_COLUMNS
 
 INGESTED, SKIPPED_DUPLICATE, REJECTED_SCHEMA = "INGESTED", "SKIPPED_DUPLICATE", "REJECTED_SCHEMA"
@@ -100,7 +100,7 @@ def file_sha256(path: Path) -> str:
 
 
 def _discover(paths: Paths) -> list[LandedFile]:
-    landing = Path(paths.files) / "landing"
+    landing = paths.landing_dir
     found = []
     for table in TABLES:
         for path in sorted((landing / table.source).glob(f"arrival_date=*/{table.pattern}")):
@@ -119,7 +119,7 @@ def _header_matches(f: LandedFile) -> bool:
 
 
 def _table_exists(path: str) -> bool:
-    return (Path(path) / "_delta_log").exists()
+    return table_exists(path)
 
 
 def _read_log(spark: SparkSession, paths: Paths) -> DataFrame | None:
@@ -142,8 +142,8 @@ def _recover(spark: SparkSession, paths: Paths, committed: set[int]) -> int:
     return removed
 
 
-def _read_files(spark: SparkSession, table: BronzeTable, files: list[LandedFile]) -> DataFrame:
-    file_paths = [str(f.path) for f in files]
+def _read_files(spark: SparkSession, paths: Paths, table: BronzeTable, files: list[LandedFile]) -> DataFrame:
+    file_paths = [paths.landing_uri(f.relative_path) for f in files]
     if table.columns is None:
         df = spark.read.text(file_paths).withColumnRenamed("value", "payload")
     else:
@@ -203,7 +203,7 @@ def ingest(spark: SparkSession, paths: Paths, fail_before_commit: bool = False) 
         files = to_load.get(table.name)
         if not files:
             continue
-        df = (_read_files(spark, table, files)
+        df = (_read_files(spark, paths, table, files)
               .withColumn("_batch_id", F.lit(batch_id).cast("long"))
               .withColumn("_ingested_at", F.lit(now).cast("timestamp"))
               .cache())

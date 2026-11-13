@@ -12,3 +12,8 @@ __pycache__/
 
 # Entorno local
 .env
+
+# Paquete construido
+dist/
+build/
+*.egg-info/

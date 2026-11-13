@@ -20,7 +20,7 @@ def test_no_check_fails_on_a_healthy_pipeline(lake):
 
 
 def test_results_are_stored_per_run(spark, lake):
-    results = spark.read.format("delta").load(lake.paths.table("gold", "_quality_checks"))
+    results = spark.read.format("delta").load(lake.paths.table("gold", "quality_checks"))
     assert results.select("run_at").distinct().count() == 2
     assert results.count() == sum(len(run) for run in lake.quality)
 

@@ -103,7 +103,7 @@ Implementado en [`lakehouse/silver.py`](../lakehouse/silver.py). `python -m lake
 | `cold_room_readings` | `room_code`, `sensor_id`, `reading_ts_utc` | Inmutable: solo se insertan claves nuevas | `reading_date` |
 | `carrier_events` | `event_id` | Inmutable: solo se insertan claves nuevas | — |
 | `quarantine` | — | Registros que no cumplen una regla | — |
-| `_processing_state` | `table_name` | Último lote de Bronze procesado por tabla | — |
+| `processing_state` | `table_name` | Último lote de Bronze procesado por tabla | — |
 
 Cada fila conserva su linaje: `_source_file`, `_bronze_batch_id` y `_silver_processed_at`.
 
@@ -142,7 +142,7 @@ Implementado en [`lakehouse/gold.py`](../lakehouse/gold.py). `python -m lakehous
 | `fact_cold_room_excursion` | Un episodio continuo fuera de rango de al menos 30 minutos | Alertas de planta |
 | `fact_lot_cold_chain` | Un lote: exposición en su cuarto y en tránsito, y su estado | Decisión de calidad sobre cada lote |
 | `fact_container_transit` | Un embarque: zarpe, arribo, retraso y temperatura del contenedor | Logística |
-| `_publications` | Una publicación registrada | Control de consumo |
+| `publications` | Una publicación registrada | Control de consumo |
 
 ### Reglas de negocio
 
@@ -163,7 +163,7 @@ Implementado en [`lakehouse/gold.py`](../lakehouse/gold.py). `python -m lakehous
 Delta Lake confirma cada tabla por separado. Si Gold reemplazara sus tablas una por una, un reporte que consulte durante la escritura podría combinar datos de dos ejecuciones.
 
 1. Cada ejecución agrega sus filas con un `_publication_id` nuevo.
-2. Al terminar todas las tablas, registra la publicación en `_publications`.
+2. Al terminar todas las tablas, registra la publicación en `publications`.
 3. El consumo lee solo la última publicación registrada (`gold.current`, `gold.register_views`).
 4. Se conservan la publicación vigente y la anterior. Las más antiguas, y las filas de una publicación que no llegó a registrarse, se eliminan.
 
@@ -175,13 +175,13 @@ Gold se recalcula completo en cada publicación. Con 1.76 millones de lecturas l
 
 ### Controles de calidad
 
-Implementados en [`lakehouse/quality.py`](../lakehouse/quality.py). `python -m lakehouse quality` los ejecuta y guarda el resultado en `gold._quality_checks`. El comando `pipeline` los ejecuta al final y termina con error si alguno falla, de modo que un orquestador detiene la cadena.
+Implementados en [`lakehouse/quality.py`](../lakehouse/quality.py). `python -m lakehouse quality` los ejecuta y guarda el resultado en `gold.quality_checks`. El comando `pipeline` los ejecuta al final y termina con error si alguno falla, de modo que un orquestador detiene la cadena.
 
 | Control | Objeto | FAIL / WARN cuando |
 |---|---|---|
 | `conciliacion_bronze` | Cada tabla Bronze | FAIL: las filas de la tabla no coinciden con las registradas en `ingestion_log` |
 | `clave_unica` | Tablas Silver y hechos Gold | FAIL: una clave de negocio aparece más de una vez |
-| `gold_al_dia` | `gold._publications` | FAIL: la publicación vigente no incluye el último lote procesado en Silver |
+| `gold_al_dia` | `gold.publications` | FAIL: la publicación vigente no incluye el último lote procesado en Silver |
 | `integridad_referencial` | `gold.fact_lot_cold_chain` | FAIL: un lote apunta a un cuarto frío desconocido |
 | `tasa_cuarentena` | Cada tabla Silver | WARN: más del 1 % de los registros de origen fue a cuarentena |
 | `frescura_fuente` | ERP, sensores y naviera | WARN: una fuente lleva más de 2 días sin enviar archivos mientras las demás siguen llegando |
@@ -239,5 +239,5 @@ La lógica de transformación vive en el paquete `lakehouse` y no depende del en
 | 3 | Silver: tipado, deduplicación, cuarentena y `MERGE` incremental | ✅ |
 | 4 | Gold: modelo dimensional, indicadores y publicación por lote | ✅ |
 | 5 | Datos tardíos, reproceso, pruebas de calidad y medición de rendimiento | ✅ |
-| 6 | Despliegue en Microsoft Fabric: Lakehouse, notebooks, pipeline y Power BI | ⏳ |
+| 6 | Despliegue en Microsoft Fabric: Lakehouse, notebooks, pipeline y Power BI | 🛠️ Paquete, notebooks, vistas y [guía](fabric.md) |
 | 7 | Documentación final y demostración | ⏳ |

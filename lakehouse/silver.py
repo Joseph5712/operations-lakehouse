@@ -1,7 +1,7 @@
 """Capa Silver: datos tipados, validados y con un registro por clave de negocio.
 
 Procesamiento incremental: cada tabla Silver recuerda el último lote de Bronze
-que procesó (`_processing_state`) y en cada ejecución lee solo los lotes
+que procesó (`processing_state`) y en cada ejecución lee solo los lotes
 nuevos y ya confirmados en el registro de ingesta.
 
 Por cada tabla:
@@ -22,7 +22,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
 
 from delta.tables import DeltaTable
 from pyspark.sql import Column, DataFrame, SparkSession, Window
@@ -31,9 +30,9 @@ from pyspark.sql.types import (BooleanType, DoubleType, IntegerType, StringType,
                                StructType)
 
 from . import iso6346
-from .config import Paths
+from .config import Paths, table_exists
 
-STATE_TABLE = "_processing_state"
+STATE_TABLE = "processing_state"
 QUARANTINE_TABLE = "quarantine"
 EVENT_TYPES = ["GATE_IN", "LOADED", "DEPARTED", "REEFER_READING", "ETA_UPDATED", "ARRIVED",
                "DISCHARGED", "GATE_OUT"]
@@ -80,7 +79,7 @@ class SilverResult:
 
 
 def _exists(path: str) -> bool:
-    return (Path(path) / "_delta_log").exists()
+    return table_exists(path)
 
 
 def _first_failure(*rules: tuple[Column, str]) -> Column:

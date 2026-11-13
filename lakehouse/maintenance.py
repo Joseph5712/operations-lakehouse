@@ -11,12 +11,11 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from pathlib import Path
 
 from delta.tables import DeltaTable
 from pyspark.sql import SparkSession
 
-from .config import LAYERS, Paths
+from .config import LAYERS, Paths, table_exists
 
 # Columnas por las que se filtra con más frecuencia.
 ZORDER = {("silver", "cold_room_readings"): ["room_code"]}
@@ -33,9 +32,9 @@ class TableMaintenance:
 def _tables(paths: Paths) -> list[tuple[str, str]]:
     found = []
     for layer in LAYERS:
-        folder = Path(paths.root) / "Tables" / layer
+        folder = paths.local_root / "Tables" / layer
         if folder.exists():
-            found += [(layer, p.name) for p in sorted(folder.iterdir()) if (p / "_delta_log").exists()]
+            found += [(layer, p.name) for p in sorted(folder.iterdir()) if table_exists(paths.table(layer, p.name))]
     return found
 
 

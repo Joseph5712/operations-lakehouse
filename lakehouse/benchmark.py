@@ -59,7 +59,7 @@ def _point_query(spark: SparkSession, paths: Paths, repeats: int = 5) -> float:
 def run(spark: SparkSession, root: Path, sensors_per_room: int) -> BenchmarkResult:
     shutil.rmtree(root, ignore_errors=True)
     paths = Paths(str(root))
-    landing = Path(paths.files) / "landing"
+    landing = paths.landing_dir
     result = BenchmarkResult(sensors_per_room)
 
     _timed(result, "Generación (todas las llegadas)",

@@ -136,6 +136,16 @@ python -m lakehouse benchmark               # mide el pipeline con 176 mil y 1.7
 
 Detalle en [docs/architecture.md](docs/architecture.md#calidad-reproceso-y-mantenimiento) y mediciones en [docs/performance.md](docs/performance.md).
 
+## Microsoft Fabric
+
+El paquete se instala en un entorno de Fabric (Runtime 1.3) y un notebook parametrizado ejecuta cada etapa desde un pipeline: `bronze → silver → gold → quality`. Las vistas del esquema `reporting` en el SQL analytics endpoint exponen solo la publicación vigente de Gold a Power BI.
+
+```bash
+pip wheel . --no-deps --no-build-isolation -w dist    # paquete para el entorno de Fabric
+```
+
+Guía de despliegue en [docs/fabric.md](docs/fabric.md).
+
 ## Pruebas
 
 ```bash
@@ -150,7 +160,8 @@ lakehouse/             Paquete Python: configuración, sesión Spark y procesos 
 lakehouse/generator/   Simulación de las fuentes de origen
 lakehouse/reference/   Datos de referencia: cuartos fríos y tolerancias de alarma
 tests/                 Pruebas
-docs/                  Arquitectura, contratos de las fuentes y decisiones de diseño
+fabric/                Notebooks, vistas SQL y medidas de Power BI para Microsoft Fabric
+docs/                  Arquitectura, contratos de las fuentes, rendimiento y despliegue en Fabric
 data/                  Lakehouse local (ignorado por Git)
 ```
 

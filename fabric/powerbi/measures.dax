@@ -1,0 +1,66 @@
+// Operations Lakehouse · medidas del modelo semántico
+// Crear en una tabla de medidas vacía. Formato sugerido entre corchetes.
+
+// ─── Lotes ─────────────────────────────────────────────────────────────────
+
+Lotes = COUNTROWS ( fact_lot_cold_chain )
+
+Kg Totales = SUM ( fact_lot_cold_chain[qty_kg] )                                   // [#,0]
+
+Lotes Comprometidos =
+CALCULATE ( [Lotes], fact_lot_cold_chain[cold_chain_status] = "COMPROMETIDO" )
+
+Kg Comprometidos =
+CALCULATE ( [Kg Totales], fact_lot_cold_chain[cold_chain_status] = "COMPROMETIDO" )   // [#,0]
+
+Kg en Riesgo =
+CALCULATE ( [Kg Totales], fact_lot_cold_chain[cold_chain_status] = "EN_RIESGO" )      // [#,0]
+
+% Kg Comprometidos = DIVIDE ( [Kg Comprometidos], [Kg Totales] )                    // [0.0 %]
+
+// ─── Cuartos fríos ─────────────────────────────────────────────────────────
+
+Excursiones = COUNTROWS ( fact_cold_room_excursion )
+
+Excursiones Críticas =
+CALCULATE ( [Excursiones], fact_cold_room_excursion[severity] = "CRITICA" )
+
+Minutos Fuera de Rango = SUM ( fact_cold_room_daily[excursion_minutes] )           // [#,0]
+
+// Proporción del tiempo con lecturas: una caída indica sensores o pasarelas sin conexión.
+Cobertura de Sensores =
+DIVIDE (
+    SUM ( fact_cold_room_daily[intervals] ),
+    COUNTROWS ( fact_cold_room_daily ) * 288
+)                                                                                  // [0.0 %]
+
+Temperatura Promedio = AVERAGE ( fact_cold_room_daily[avg_temp_c] )                // [0.0]
+
+// ─── Tránsito ──────────────────────────────────────────────────────────────
+
+Embarques = COUNTROWS ( fact_container_transit )
+
+Embarques con Retraso =
+CALCULATE ( [Embarques], fact_container_transit[arrival_delay_h] >= 24 )
+
+% Embarques con Retraso = DIVIDE ( [Embarques con Retraso], [Embarques] )          // [0.0 %]
+
+Retraso Promedio (h) =
+CALCULATE ( AVERAGE ( fact_container_transit[arrival_delay_h] ),
+            fact_container_transit[status] = "ARRIBADO" )                          // [0.0]
+
+Contenedores Fuera de Rango =
+CALCULATE ( [Embarques], fact_container_transit[transit_out_of_range_h] > 0 )
+
+// ─── Estado de los datos ───────────────────────────────────────────────────
+
+Publicación Vigente = MAX ( current_publication[publication_id] )
+
+Controles en FAIL = CALCULATE ( COUNTROWS ( quality_checks ), quality_checks[status] = "FAIL" )
+
+Controles en WARN = CALCULATE ( COUNTROWS ( quality_checks ), quality_checks[status] = "WARN" )
+
+Texto Estado de Datos =
+"Publicación " & [Publicación Vigente] & " · "
+    & FORMAT ( MAX ( current_publication[published_at] ), "dd/mm/yyyy hh:nn" ) & " UTC · "
+    & COALESCE ( [Controles en FAIL], 0 ) & " FAIL, " & COALESCE ( [Controles en WARN], 0 ) & " WARN"

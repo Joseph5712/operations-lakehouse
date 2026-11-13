@@ -1,6 +1,6 @@
 """Controles de calidad del lakehouse.
 
-Se ejecutan al final del pipeline y guardan su resultado en `gold._quality_checks`.
+Se ejecutan al final del pipeline y guardan su resultado en `gold.quality_checks`.
 Cada control produce PASS, WARN o FAIL:
 
   FAIL  el dato publicado no es confiable; el pipeline termina con error
@@ -10,15 +10,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from .config import Paths
+from .config import Paths, table_exists
 from .gold import current, current_publication
 
-RESULTS_TABLE = "_quality_checks"
+RESULTS_TABLE = "quality_checks"
 QUARANTINE_WARN_RATE = 0.01         # más de 1 % de registros rechazados
 FRESHNESS_WARN_DAYS = 2             # una fuente con más de 2 días de atraso respecto de las demás
 
@@ -49,7 +48,7 @@ class Check:
 
 
 def _exists(path: str) -> bool:
-    return (Path(path) / "_delta_log").exists()
+    return table_exists(path)
 
 
 def _delta(spark: SparkSession, path: str):
@@ -127,11 +126,11 @@ def sensor_coverage(spark: SparkSession, paths: Paths) -> list[Check]:
 
 def gold_checks(spark: SparkSession, paths: Paths) -> list[Check]:
     checks = [_unique(spark, current(spark, paths, t), "clave_unica", f"gold.{t}", keys) for t, keys in GOLD_KEYS.items()]
-    signature = (_delta(spark, paths.table("silver", "_processing_state"))
+    signature = (_delta(spark, paths.table("silver", "processing_state"))
                  .agg(F.min("last_bronze_batch")).first()[0])
-    published = (_delta(spark, paths.table("gold", "_publications"))
+    published = (_delta(spark, paths.table("gold", "publications"))
                  .orderBy(F.col("publication_id").desc()).first().source_bronze_batch)
-    checks.append(Check("gold_al_dia", "gold._publications", "PASS" if published == signature else "FAIL",
+    checks.append(Check("gold_al_dia", "gold.publications", "PASS" if published == signature else "FAIL",
                         f"publicación con lote de Bronze {published}", f"lote de Bronze {signature} procesado en Silver"))
     lots = current(spark, paths, "fact_lot_cold_chain")
     rooms = current(spark, paths, "dim_cold_room").select(F.col("room_code").alias("cold_room_code"))
